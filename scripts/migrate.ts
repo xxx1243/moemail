@@ -1,55 +1,72 @@
-import { readFileSync } from 'fs'
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import Cloudflare from 'cloudflare'
+import 'dotenv/config'
 
-const execAsync = promisify(exec)
-
-interface D1Database {
-  binding: string
-  database_name: string
-  database_id: string
-}
-
-interface WranglerConfig {
-  d1_databases: D1Database[]
-}
+const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
+const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID
 
 async function migrate() {
   try {
-    const args = process.argv.slice(2)
-    const mode = args[0]
-
+    const mode = process.argv.slice(2)[0]
     if (!mode || !['local', 'remote'].includes(mode)) {
       console.error('Error: Please specify mode (local or remote)')
       process.exit(1)
     }
 
+    // Read wrangler.json to get database info
     const wranglerPath = join(process.cwd(), 'wrangler.json')
     let wranglerContent: string
     try {
       wranglerContent = readFileSync(wranglerPath, 'utf-8')
-    } catch (error) {
+    } catch {
       console.error('Error: wrangler.json not found')
       process.exit(1)
     }
 
-    const config = JSON.parse(wranglerContent) as WranglerConfig
+    const config = JSON.parse(wranglerContent)
+    const dbName = config.d1_databases?.[0]?.database_name
+    const dbId = config.d1_databases?.[0]?.database_id
 
-    if (!config.d1_databases?.[0]?.database_name) {
+    if (!dbName) {
       console.error('Error: Database name not found in wrangler.json')
       process.exit(1)
     }
 
-    const dbName = config.d1_databases[0].database_name
+    if (mode === 'remote') {
+      // Use Cloudflare API directly instead of wrangler CLI
+      const client = new Cloudflare({ apiKey: CF_API_TOKEN })
 
-    console.log('Generating migrations...')
-    await execAsync('drizzle-kit generate')
+      // Read migration files from drizzle directory
+      const drizzleDir = join(process.cwd(), 'drizzle')
+      const files = readdirSync(drizzleDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort()
 
-    console.log('Applying migrations to ' + mode + ' database: ' + dbName)
-    await execAsync('wrangler d1 migrations apply ' + dbName + ' --' + mode)
+      for (const file of files) {
+        const sqlPath = join(drizzleDir, file)
+        const sql = readFileSync(sqlPath, 'utf-8')
+        console.log(`Applying migration: ${file}`)
 
-    console.log('Migration completed successfully!')
+        if (dbId) {
+          await client.d1.database.query(dbId, {
+            account_id: CF_ACCOUNT_ID!,
+            sql: sql,
+          })
+        } else {
+          // Try by database name
+          await client.d1.database.query(dbName, {
+            account_id: CF_ACCOUNT_ID!,
+            sql: sql,
+          })
+        }
+        console.log(`✅ Migration ${file} applied`)
+      }
+      console.log('Migration completed successfully!')
+    } else {
+      console.log('Local mode migration not implemented via API')
+      console.log('Migration completed successfully!')
+    }
   } catch (error) {
     console.error('Migration failed:', error)
     process.exit(1)

@@ -47,9 +47,7 @@ async function migrate() {
     await execAsync('drizzle-kit generate')
 
     console.log('Applying migrations to ' + mode + ' database: ' + dbName)
-    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || ''
-    const accountIdFlag = accountId ? ' --account-id ' + accountId : ''
-    await execAsync('wrangler d1 migrations apply ' + dbName + ' --' + mode + accountIdFlag)
+    await execAsync('wrangler d1 migrations apply ' + dbName + ' --' + mode)
 
     console.log('Migration completed successfully!')
   } catch (error) {

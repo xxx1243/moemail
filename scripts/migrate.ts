@@ -17,7 +17,6 @@ interface WranglerConfig {
 
 async function migrate() {
   try {
-    // Get command line arguments
     const args = process.argv.slice(2)
     const mode = args[0]
 
@@ -26,21 +25,17 @@ async function migrate() {
       process.exit(1)
     }
 
-    // Read wrangler.json
     const wranglerPath = join(process.cwd(), 'wrangler.json')
     let wranglerContent: string
-    
     try {
       wranglerContent = readFileSync(wranglerPath, 'utf-8')
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       console.error('Error: wrangler.json not found')
       process.exit(1)
     }
 
-    // Parse wrangler.json
     const config = JSON.parse(wranglerContent) as WranglerConfig
-    
+
     if (!config.d1_databases?.[0]?.database_name) {
       console.error('Error: Database name not found in wrangler.json')
       process.exit(1)
@@ -48,13 +43,13 @@ async function migrate() {
 
     const dbName = config.d1_databases[0].database_name
 
-    // Generate migrations
     console.log('Generating migrations...')
     await execAsync('drizzle-kit generate')
-    
-    // Applying migrations
-    console.log(`Applying migrations to ${mode} database: ${dbName}`)
-    await execAsync(`wrangler d1 migrations apply ${dbName} --${mode}`)
+
+    console.log('Applying migrations to ' + mode + ' database: ' + dbName)
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || ''
+    const accountIdFlag = accountId ? ' --account-id ' + accountId : ''
+    await execAsync('wrangler d1 migrations apply ' + dbName + ' --' + mode + accountIdFlag)
 
     console.log('Migration completed successfully!')
   } catch (error) {

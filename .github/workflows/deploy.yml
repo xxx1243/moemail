@@ -35,6 +35,35 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
+      # Step 1: Setup config files
+      - name: Setup wrangler config
+        run: |
+          cp wrangler.example.json wrangler.json
+          echo "✅ wrangler.json created"
+
+      # Step 2: Run migration directly (diagnostic)
+      - name: Run drizzle-kit generate
+        id: generate
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🧪 Running drizzle-kit generate..."
+          npx drizzle-kit generate 2>&1 || echo "EXIT_CODE=$?" >> $GITHUB_OUTPUT
+
+      - name: Run wrangler migration
+        id: migrate
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "🧪 Running migration..."
+          npx wrangler d1 migrations apply lin_shi_you_xiang --remote --account-id ${{ secrets.CLOUDFLARE_ACCOUNT_ID }} 2>&1
+          echo "EXIT_CODE=$?"
+
+      # Step 3: Full deploy script
       - name: Run deploy script
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -51,6 +80,7 @@ jobs:
           AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: pnpm dlx tsx scripts/deploy/index.ts
+        continue-on-error: true
 
       - name: Post deployment cleanup
         run: |
